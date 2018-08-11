@@ -21,7 +21,7 @@ Simple fasthttp static router not support params in url but fast
 
 	apiv1.Use(func(c *router.Context) {
 		c.Response.Header.Set("X-Hello", "Hello")
-		c.SetData("usera", map[string]string{"Name": "Guest"})
+		c.SetData("user", map[string]string{"Name": "Guest"})
 	})
 
 	// apiv1.Get
