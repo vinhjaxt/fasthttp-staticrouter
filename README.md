@@ -49,7 +49,7 @@ Checkout [Example](example/main.go)
 
   - c.Abort : Abort next handler
   - c.SetData : Set data to current context
-  - c.GetData : Set data of current context
+  - c.GetData : Get data of current context
 
 #### License
 - MIT
