@@ -3,7 +3,7 @@ Simple fasthttp static router not support params in url but fast
 
 ## Features
 
-**Static http routing which simple fast
+- Static http routing which simple fast
 
 ## Usage
 ```go
@@ -34,7 +34,7 @@ Simple fasthttp static router not support params in url but fast
 		c.SetBodyString("\"Hello " + name + "\"")
 	})
 ```
-Checkout [Example](examples/main.go)
+Checkout [Example](example/main.go)
 
 #### License
 - MIT
