@@ -6,6 +6,8 @@ Simple fasthttp static router not support params in url but fast
 - Static http routing which simple fast
 
 ## Usage
+`go get -u https://github.com/vinhjaxt/fasthttp-staticrouter`
+
 ```go
 	r := router.New()
 
@@ -35,6 +37,19 @@ Simple fasthttp static router not support params in url but fast
 	})
 ```
 Checkout [Example](example/main.go)
+
+- Available api:
+  r.New : Create new router
+  r.Use : Middleware
+  r.Get, r.Post, r.Put, r.Patch, r.Delete, r.Options, r.Head : HTTP methods
+  r.Group : Create group of routers
+  r.NotFound : Set not found function
+  r.MethodNotAllowed : Set MethodNotAllowed function
+  r.OnError : Set panic handler function 
+
+  c.Abort : Abort next handler
+  c.SetData : Set data to current context
+  c.GetData : Set data of current context
 
 #### License
 - MIT
