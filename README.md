@@ -6,7 +6,7 @@ Simple fasthttp static router not support params in url but fast
 - Static http routing which simple fast
 
 ## Usage
-`go get -u https://github.com/vinhjaxt/fasthttp-staticrouter`
+`go get -u github.com/vinhjaxt/fasthttp-staticrouter`
 
 ```go
 	r := router.New()
