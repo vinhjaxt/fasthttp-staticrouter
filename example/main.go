@@ -55,30 +55,13 @@ func main() {
 		FSHandler(c.RequestCtx)
 	})
 
-	HTTPPort, err := strconv.Atoi(strings.Trim(os.Getenv("GO_APP_HTTP_PORT"), " \r\n\t"))
-	if err != nil {
-		HTTPPort = 80
-	}
-	// Start HTTP server.
-	HTTPServer := &fasthttp.Server{
-		Handler:              r.Handler,
-		Name:                 "nginx",
-		ReadTimeout:          120 * 1000000000, // 120s
-		WriteTimeout:         120 * 1000000000,
-		MaxKeepaliveDuration: 120 * 1000000000,
-		MaxRequestBodySize:   2 * 1048576, // 2MB
-	}
-	log.Printf("\r\nHTTP Server running on port %d", HTTPPort)
 	go func() {
-		if err := HTTPServer.ListenAndServe(fmt.Sprintf(":%d", HTTPPort)); err != nil {
-			log.Fatalf("error in ListenAndServe: %s", err)
+		HTTPPort, err := strconv.Atoi(strings.Trim(os.Getenv("GO_APP_HTTP_PORT"), " \r\n\t"))
+		if err != nil {
+			HTTPPort = 80
 		}
-	}()
-
-	HTTPSPort, err := strconv.Atoi(strings.Trim(os.Getenv("GO_APP_HTTPS_PORT"), " \r\n\t"))
-	if err == nil {
-		// Start HTTPS server.
-		HTTPSServer := &fasthttp.Server{
+		// Start HTTP server.
+		HTTPServer := &fasthttp.Server{
 			Handler:              r.Handler,
 			Name:                 "nginx",
 			ReadTimeout:          120 * 1000000000, // 120s
@@ -86,15 +69,32 @@ func main() {
 			MaxKeepaliveDuration: 120 * 1000000000,
 			MaxRequestBodySize:   2 * 1048576, // 2MB
 		}
-		certFile := ""
-		keyFile := ""
-		log.Printf("Starting HTTPS server on port %d", HTTPSPort)
-		go func() {
+		log.Printf("\r\nHTTP Server running on port %d", HTTPPort)
+		if err := HTTPServer.ListenAndServe(fmt.Sprintf(":%d", HTTPPort)); err != nil {
+			log.Fatalf("error in ListenAndServe: %s", err)
+		}
+	}()
+
+	go func() {
+		HTTPSPort, err := strconv.Atoi(strings.Trim(os.Getenv("GO_APP_HTTPS_PORT"), " \r\n\t"))
+		if err == nil {
+			// Start HTTPS server.
+			HTTPSServer := &fasthttp.Server{
+				Handler:              r.Handler,
+				Name:                 "nginx",
+				ReadTimeout:          120 * 1000000000, // 120s
+				WriteTimeout:         120 * 1000000000,
+				MaxKeepaliveDuration: 120 * 1000000000,
+				MaxRequestBodySize:   2 * 1048576, // 2MB
+			}
+			certFile := ""
+			keyFile := ""
+			log.Printf("Starting HTTPS server on port %d", HTTPSPort)
 			if err := HTTPSServer.ListenAndServeTLS(fmt.Sprintf(":%d", HTTPSPort), certFile, keyFile); err != nil {
 				log.Fatalf("error in ListenAndServeTLS: %s", err)
 			}
-		}()
-	}
+		}
+	}()
 
 	// Wait forever.
 	select {}
