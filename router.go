@@ -6,7 +6,6 @@ package router
 import (
 	"log"
 	"runtime/debug"
-	"strings"
 	"sync"
 
 	"github.com/valyala/fasthttp" // faster than net/http
@@ -86,7 +85,8 @@ func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
 	// middlewares
 	for p, mhandles := range r.middlewares {
 		lenP := len(p)
-		if strings.HasPrefix(path, p) && (lenP == len(path) || path[lenP] == '/') {
+		lenPath := len(path)
+		if path == p || (lenPath > lenP && path[0:lenP] == p && path[lenP] == '/') {
 			for _, handle := range mhandles {
 				handle(c)
 				if c.abort {
@@ -132,9 +132,7 @@ func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
 
 	// path not found
 	if notFound {
-		if c.abort == false {
-			r.notFoundFuction(c)
-		}
+		r.notFoundFuction(c)
 	}
 abort:
 }

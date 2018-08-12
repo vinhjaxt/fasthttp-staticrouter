@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	".."
 	"github.com/valyala/fasthttp"
+	"github.com/vinhjaxt/fasthttp-staticrouter"
 )
 
 func main() {
