@@ -102,6 +102,11 @@ func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
 	path := string(ctx.Path())
 	method := string(ctx.Method())
 	mPath = method + path
+	c = r.pool.Get().(*Context)
+	defer r.pool.Put(c) // this will be called after recoverFunction called
+	c.RequestCtx = ctx
+	c.Store = nil
+	c.abort = false
 	for i, uPath = range methods {
 		if uPath == method {
 			goto OK
@@ -110,11 +115,6 @@ func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
 	status = methodNotAllowedFlag // not found = false, methodNotAllowed = true
 	goto methodNotSupported
 OK:
-	c = r.pool.Get().(*Context)
-	defer r.pool.Put(c) // this will be called after recoverFunction called
-	c.RequestCtx = ctx
-	c.Store = nil
-	c.abort = false
 	defer r.recoverFunction(c)
 	status = notFoundFlag // not found = true, methodNotAllowed = false
 
