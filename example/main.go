@@ -41,6 +41,19 @@ func main() {
 		}
 		c.SetBodyString("\"Hello " + name + "\"")
 	})
+	i := 0
+	for i < 100 {
+		i++
+		apiv1.Get(fmt.Sprint("/abc", i), func(c *router.Context) {
+			user, ok := c.GetData("user").(map[string]string)
+			name, ok := user["Name"]
+			if !ok {
+				c.Error("Error", fasthttp.StatusInternalServerError)
+				return
+			}
+			c.SetBodyString(fmt.Sprint("\"Hello ", name, " ", i, "\""))
+		})
+	}
 
 	fs := &fasthttp.FS{
 		Root:               "./public_web",
