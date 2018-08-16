@@ -9,32 +9,32 @@ Simple fasthttp static router not support params in url but fast
 `go get -u github.com/vinhjaxt/fasthttp-staticrouter`
 
 ```go
-	r := router.New()
+r := router.New()
 
-	api := r.Group("/api")
+api := r.Group("/api")
 
-	api.Use(func(c *router.Context) {
-		c.Response.Header.Set("Content-Type", "application/json")
-	})
+api.Use(func(c *router.Context) {
+	c.Response.Header.Set("Content-Type", "application/json")
+})
 
-	apiv1 := api.Group("/v1")
+apiv1 := api.Group("/v1")
 
-	apiv1.Use(func(c *router.Context) {
-		c.Response.Header.Set("X-Hello", "Hello")
-		c.SetData("user", map[string]string{"Name": "Guest"})
-	})
+apiv1.Use(func(c *router.Context) {
+	c.Response.Header.Set("X-Hello", "Hello")
+	c.SetUserValue("user", map[string]string{"Name": "Guest"})
+})
 
-	// apiv1.Get
+// apiv1.Get
 
-	apiv1.Any("/", func(c *router.Context) {
-		user, ok := c.GetData("user").(map[string]string)
-		name, ok := user["Name"]
-		if !ok {
-			c.Error("Error", fasthttp.StatusInternalServerError)
-			return
-		}
-		c.SetBodyString("\"Hello " + name + "\"")
-	})
+apiv1.Any("/", func(c *router.Context) {
+	user, ok := c.UserValue("user").(map[string]string)
+	name, ok := user["Name"]
+	if !ok {
+		c.Error("Error", fasthttp.StatusInternalServerError)
+		return
+	}
+	c.SetBodyString("\"Hello " + name + "\"")
+})
 ```
 Checkout [Example](example/main.go)
 
@@ -48,8 +48,8 @@ Checkout [Example](example/main.go)
   - r.OnError : Set panic handler function 
 
   - c.Abort : Abort next handler
-  - c.SetData : Set data to current context
-  - c.GetData : Get data of current context
+  - c.SetData : (Remove) use SetUserValue instead
+  - c.GetData : (Remove) use UserValue instead
 
 #### License
 - MIT

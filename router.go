@@ -7,28 +7,34 @@ import (
 	"log"
 	"runtime/debug"
 	"sync"
-	"time"
 
 	"github.com/valyala/fasthttp" // faster than net/http
 )
 
 type (
+	handler struct {
+		m string
+		h func(*Context)
+	}
+
+	handlerList struct {
+		n int
+		h []*handler
+	}
+
 	// Context of request
 	Context struct {
 		*fasthttp.RequestCtx
-		Store map[string]interface{}
 		abort bool
 	}
 
 	// Router struct
 	Router struct {
-		pool                     sync.Pool // Context pool
-		handles                  map[string]func(*Context)
-		middlewares              map[string]func(*Context)
+		handlers                 map[string]*handlerList // final map
+		middlewares              map[string][]*handler   // final map
 		notFoundFuction          func(*Context)
 		recoverFunction          func(*Context)
 		methodNotAllowedFunction func(*Context)
-		cache                    map[string][]func(*Context)
 	}
 
 	// GroupRouter struct
@@ -37,6 +43,13 @@ type (
 		path   string
 	}
 )
+
+var poolNew = func() interface{} {
+	return &Context{}
+}
+var pool = sync.Pool{
+	New: poolNew,
+} // Context pool
 
 // Default handler functions
 func recoverFunction(c *Context) {
@@ -54,8 +67,6 @@ func methodNotAllowedFunction(c *Context) {
 	c.Error("request method not allowed", fasthttp.StatusMethodNotAllowed)
 }
 
-var methods = [...]string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-
 const (
 	notFoundFlag         = 0x01
 	methodNotAllowedFlag = 0x02
@@ -64,170 +75,186 @@ const (
 // New create a router
 func New() (r *Router) {
 	r = &Router{
-		handles:                  map[string]func(*Context){},
-		middlewares:              map[string]func(*Context){},
+		handlers:                 map[string]*handlerList{},
+		middlewares:              map[string][]*handler{},
 		recoverFunction:          recoverFunction,
 		notFoundFuction:          notFoundFuction,
 		methodNotAllowedFunction: methodNotAllowedFunction,
-		cache:                    map[string][]func(*Context){},
-	}
-	r.pool.New = func() interface{} {
-		return &Context{
-			RequestCtx: nil,
-			Store:      nil,
-			abort:      false,
-		}
 	}
 	return
 }
 
-func timeTrack(start int64, name string) {
-	end := time.Now().UnixNano()
-	log.Printf("%s start: %d, end: %d, diff: %dns", name, start, end, end-start)
+// BuildHandler to pass to fasthttp
+func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
+	h = buildHandler(r.handlers, r.recoverFunction, r.notFoundFuction, r.methodNotAllowedFunction)
+	r.handlers = nil
+	r.middlewares = nil
+	r.recoverFunction = nil
+	r.notFoundFuction = nil
+	r.methodNotAllowedFunction = nil
+	return
 }
 
-// Handler need to pass to fasthttp
-func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
-	// defer timeTrack(time.Now().UnixNano(), "Handler")
-	var (
-		ok      bool
-		c       *Context
-		status  int8
-		i       int
-		handle  func(*Context)
-		handles []func(*Context)
-		uPath   string
-		mPath   string
-	)
-	path := string(ctx.Path())
-	method := string(ctx.Method())
-	mPath = method + path
-	c = r.pool.Get().(*Context)
-	defer r.pool.Put(c) // this will be called after recoverFunction called
-	c.RequestCtx = ctx
-	c.Store = nil
-	c.abort = false
-	for i, uPath = range methods {
-		if uPath == method {
-			goto OK
-		}
-	}
-	status = methodNotAllowedFlag // not found = false, methodNotAllowed = true
-	goto methodNotSupported
-OK:
-	defer r.recoverFunction(c)
-	status = notFoundFlag // not found = true, methodNotAllowed = false
-
-	// cache method,path => handles
-	if handles, ok = r.cache[mPath]; ok {
-		for i, handle = range handles {
-			handle(c)
-			if c.abort {
-				goto abort
-			}
-		}
-		goto abort
-	}
-
-	handles = []func(*Context){}
-
-	// middlewares
-	i = len(path)
-	for i > 0 {
-		i--
-		if path[i] == '/' {
-			uPath = path[0:i]
-			if handle, ok = r.middlewares[uPath]; ok {
-				handles = append(handles, handle)
-				if c.abort == false {
-					handle(c)
+func buildHandler(handlerMap map[string]*handlerList, recoverFunction func(*Context), notFoundFuction func(*Context), methodNotAllowedFunction func(*Context)) func(ctx *fasthttp.RequestCtx) {
+	return func(ctx *fasthttp.RequestCtx) {
+		path := string(ctx.Path())
+		method := string(ctx.Method())
+		status := notFoundFlag
+		c := pool.Get().(*Context)
+		c.RequestCtx = ctx
+		c.abort = false
+		defer pool.Put(c)
+		defer recoverFunction(c)
+		if handlers, ok := handlerMap[path]; ok {
+			status = methodNotAllowedFlag
+			hh := handlers.h
+			l := handlers.n
+			var i int // 0 by default
+			// i think the number of handlers <= 10, so i use for loop array instead of map
+			for i < l {
+				handle := hh[i]
+				m := handle.m
+				h := handle.h
+				if m == "" {
+					// middleware
+					h(c)
+					if c.abort {
+						return
+					}
+				} else if m == "*" || m == method {
+					// handler
+					status = 0
+					h(c)
+					if c.abort {
+						return
+					}
 				}
+				i++
 			}
 		}
-	}
-	// any method
-	if handle, ok = r.handles["*"+path]; ok {
-		handles = append(handles, handle)
-		status = 0 // not found = false, methodNotAllowed = false
-		if c.abort == false {
-			handle(c)
+		if status == 0 {
+			return
+		} else if status == methodNotAllowedFlag {
+			methodNotAllowedFunction(c)
+		} else if status == notFoundFlag {
+			notFoundFuction(c)
 		}
 	}
-	// methods
-	if handle, ok = r.handles[mPath]; ok {
-		handles = append(handles, handle)
-		status = 0
-		if c.abort == false {
-			handle(c)
-		}
-	}
-
-	if (status & notFoundFlag) == 0 {
-		r.cache[mPath] = handles
-	}
-
-methodNotSupported:
-	// path exist, but no method found
-	if (status & methodNotAllowedFlag) != 0 {
-		r.methodNotAllowedFunction(c)
-		goto abort
-	}
-
-	// path not found
-	if (status & notFoundFlag) != 0 {
-		r.notFoundFuction(c)
-	}
-abort:
 }
 
 // Router
-func (r *Router) add(path, method string, h func(*Context)) {
-	r.handles[method+path] = h
+func (r *Router) add(path, method string, hh ...func(*Context)) {
+	for _, h := range hh {
+		handle := &handler{
+			m: method,
+			h: h,
+		}
+		if handlers, ok := r.handlers[path]; ok {
+			// path exist, middlewares also added
+			handlers.h = append(handlers.h, handle)
+			handlers.n++
+		} else {
+			// path not exist, add middlewares handlers
+			hm := r.findMiddlewares(path)
+			hm = append(hm, handle)
+			handlers := handlerList{
+				n: len(hm),
+				h: hm,
+			}
+			r.handlers[path] = &handlers
+		}
+	}
+}
+
+func (r *Router) findMiddlewares(path string) []*handler {
+	hh := []*handler{}
+	if h, ok := r.middlewares[path]; ok {
+		hh = append(hh, h...)
+	}
+	i := len(path)
+	for i > 0 {
+		i--
+		if path[i] == '/' {
+			mpath := path[0:i]
+			if h, ok := r.middlewares[mpath]; ok {
+				hh = append(hh, h...)
+			}
+		}
+	}
+	return hh
+}
+func (r *Router) addUse(path string, hh ...func(*Context)) {
+	middlewares := []*handler{}
+	// add middlewares
+	for _, h := range hh {
+		handle := &handler{
+			m: "",
+			h: h,
+		}
+		middlewares = append(middlewares, handle)
+		if handles, ok := r.middlewares[path]; ok {
+			r.middlewares[path] = append(handles, handle)
+		} else {
+			r.middlewares[path] = []*handler{handle}
+		}
+	}
+
+	// find router match this path
+	lpath := len(path)
+	for k, h := range r.handlers {
+		lk := len(k)
+		if k == path || (lk >= lpath && k[0:lpath] == path && k[lpath] == '/') {
+			// append middlewares
+			h.h = append(h.h, middlewares...)
+			h.n += len(middlewares)
+			r.handlers[k] = h
+		}
+	}
 }
 
 // Get method
-func (r *Router) Get(path string, h func(*Context)) {
-	r.add(path, "GET", h)
+func (r *Router) Get(path string, h ...func(*Context)) {
+	r.add(path, "GET", h...)
 }
 
 // Post method
-func (r *Router) Post(path string, h func(*Context)) {
-	r.add(path, "POST", h)
+func (r *Router) Post(path string, h ...func(*Context)) {
+	r.add(path, "POST", h...)
 }
 
 // Put method
-func (r *Router) Put(path string, h func(*Context)) {
-	r.add(path, "PUT", h)
+func (r *Router) Put(path string, h ...func(*Context)) {
+	r.add(path, "PUT", h...)
 }
 
 // Patch method
-func (r *Router) Patch(path string, h func(*Context)) {
-	r.add(path, "PATCH", h)
+func (r *Router) Patch(path string, h ...func(*Context)) {
+	r.add(path, "PATCH", h...)
 }
 
 // Delete method
-func (r *Router) Delete(path string, h func(*Context)) {
-	r.add(path, "DELETE", h)
+func (r *Router) Delete(path string, h ...func(*Context)) {
+	r.add(path, "DELETE", h...)
 }
 
 // Options method
-func (r *Router) Options(path string, h func(*Context)) {
-	r.add(path, "OPTIONS", h)
+func (r *Router) Options(path string, h ...func(*Context)) {
+	r.add(path, "OPTIONS", h...)
 }
 
 // Head method
-func (r *Router) Head(path string, h func(*Context)) {
-	r.add(path, "HEAD", h)
+func (r *Router) Head(path string, h ...func(*Context)) {
+	r.add(path, "HEAD", h...)
 }
 
 // Any method
-func (r *Router) Any(path string, h func(*Context)) {
-	r.add(path, "*", h)
+func (r *Router) Any(path string, h ...func(*Context)) {
+	r.add(path, "*", h...)
 }
 
 // Use middlewares
-func (r *Router) Use(h func(*Context)) {
-	r.middlewares[""] = h
+func (r *Router) Use(h ...func(*Context)) {
+	r.addUse("", h...)
 }
 
 // NotFound handler
@@ -257,48 +284,48 @@ func (r *Router) OnError(h func(*Context)) {
 // GroupRouter
 
 // Get method
-func (g *GroupRouter) Get(path string, h func(*Context)) {
-	g.router.add(g.path+path, "GET", h)
+func (g *GroupRouter) Get(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "GET", h...)
 }
 
 // Post method
-func (g *GroupRouter) Post(path string, h func(*Context)) {
-	g.router.add(g.path+path, "POST", h)
+func (g *GroupRouter) Post(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "POST", h...)
 }
 
 // Put method
-func (g *GroupRouter) Put(path string, h func(*Context)) {
-	g.router.add(g.path+path, "PUT", h)
+func (g *GroupRouter) Put(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "PUT", h...)
 }
 
 // Patch method
-func (g *GroupRouter) Patch(path string, h func(*Context)) {
-	g.router.add(g.path+path, "PATCH", h)
+func (g *GroupRouter) Patch(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "PATCH", h...)
 }
 
 // Delete method
-func (g *GroupRouter) Delete(path string, h func(*Context)) {
-	g.router.add(g.path+path, "DELETE", h)
+func (g *GroupRouter) Delete(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "DELETE", h...)
 }
 
 // Options method
-func (g *GroupRouter) Options(path string, h func(*Context)) {
-	g.router.add(g.path+path, "OPTIONS", h)
+func (g *GroupRouter) Options(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "OPTIONS", h...)
 }
 
 // Head method
-func (g *GroupRouter) Head(path string, h func(*Context)) {
-	g.router.add(g.path+path, "HEAD", h)
+func (g *GroupRouter) Head(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "HEAD", h...)
 }
 
 // Any method
-func (g *GroupRouter) Any(path string, h func(*Context)) {
-	g.router.add(g.path+path, "*", h)
+func (g *GroupRouter) Any(path string, h ...func(*Context)) {
+	g.router.add(g.path+path, "*", h...)
 }
 
 // Use middlewares
-func (g *GroupRouter) Use(h func(*Context)) {
-	g.router.middlewares[g.path] = h
+func (g *GroupRouter) Use(h ...func(*Context)) {
+	g.router.addUse(g.path, h...)
 }
 
 // Group create another group
@@ -315,20 +342,4 @@ func (g *GroupRouter) Group(path string) (cg *GroupRouter) {
 // Abort next handler from context
 func (c *Context) Abort() {
 	c.abort = true
-}
-
-// GetData from other handler
-func (c *Context) GetData(name string) interface{} {
-	if r, ok := c.Store[name]; ok {
-		return r
-	}
-	return nil
-}
-
-// SetData from other handler
-func (c *Context) SetData(name string, data interface{}) {
-	if c.Store == nil {
-		c.Store = map[string]interface{}{}
-	}
-	c.Store[name] = data
 }

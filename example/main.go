@@ -27,13 +27,13 @@ func main() {
 
 	apiv1.Use(func(c *router.Context) {
 		c.Response.Header.Set("X-Hello", "Hello")
-		c.SetData("user", map[string]string{"Name": "Guest"})
+		c.SetUserValue("user", map[string]string{"Name": "Guest"})
 	})
 
 	// apiv1.Get
 
 	apiv1.Any("/", func(c *router.Context) {
-		user, ok := c.GetData("user").(map[string]string)
+		user, ok := c.UserValue("user").(map[string]string)
 		name, ok := user["Name"]
 		if !ok {
 			c.Error("Error", fasthttp.StatusInternalServerError)
@@ -41,19 +41,6 @@ func main() {
 		}
 		c.SetBodyString("\"Hello " + name + "\"")
 	})
-	i := 0
-	for i < 100 {
-		i++
-		apiv1.Get(fmt.Sprint("/abc", i), func(c *router.Context) {
-			user, ok := c.GetData("user").(map[string]string)
-			name, ok := user["Name"]
-			if !ok {
-				c.Error("Error", fasthttp.StatusInternalServerError)
-				return
-			}
-			c.SetBodyString(fmt.Sprint("\"Hello ", name, " ", i, "\""))
-		})
-	}
 
 	fs := &fasthttp.FS{
 		Root:               "./public_web",
@@ -67,6 +54,10 @@ func main() {
 	r.NotFound(func(c *router.Context) {
 		FSHandler(c.RequestCtx)
 	})
+	requestHandler := r.BuildHandler()
+	api = nil
+	apiv1 = nil
+	r = nil
 
 	go func() {
 		HTTPPort, err := strconv.Atoi(strings.Trim(os.Getenv("GO_APP_HTTP_PORT"), " \r\n\t"))
@@ -75,7 +66,7 @@ func main() {
 		}
 		// Start HTTP server.
 		HTTPServer := &fasthttp.Server{
-			Handler:              r.Handler,
+			Handler:              requestHandler,
 			Name:                 "nginx",
 			ReadTimeout:          120 * 1000000000, // 120s
 			WriteTimeout:         120 * 1000000000,
@@ -93,7 +84,7 @@ func main() {
 		if err == nil {
 			// Start HTTPS server.
 			HTTPSServer := &fasthttp.Server{
-				Handler:              r.Handler,
+				Handler:              requestHandler,
 				Name:                 "nginx",
 				ReadTimeout:          120 * 1000000000, // 120s
 				WriteTimeout:         120 * 1000000000,
