@@ -48,8 +48,8 @@ Checkout [Example](example/main.go)
   - r.OnError : Set panic handler function 
 
   - c.Abort : Abort next handler
-  - c.SetData : (Remove) use SetUserValue instead
-  - c.GetData : (Remove) use UserValue instead
+  - c.SetData : (Removed) use SetUserValue instead
+  - c.GetData : (Removed) use UserValue instead
 
 #### License
 - MIT
