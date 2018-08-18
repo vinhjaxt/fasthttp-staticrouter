@@ -26,7 +26,7 @@ func main() {
 	apiv1 := api.Group("/v1")
 
 	apiv1.Use(func(c *router.Context) {
-		c.Response.Header.Set("X-Hello", "Hello")
+		c.Response.Header.Set("X-Hello", "Hello") // dont trust the client
 		c.SetUserValue("user", map[string]string{"Name": "Guest"})
 	})
 
