@@ -171,18 +171,23 @@ func (r *Router) findMiddlewares(path string) []*handler {
 	if h, ok := r.middlewares[path]; ok {
 		hh = append(hh, h...)
 	}
-	i := len(path)
-	for i > 0 {
-		i--
+	// i := len(path)
+	// for i > 0 {
+	// 	i--
+	// Priority father first
+	i := 0
+	for i < len(path) {
 		if path[i] == '/' {
 			mpath := path[0:i]
 			if h, ok := r.middlewares[mpath]; ok {
 				hh = append(hh, h...)
 			}
 		}
+		i++
 	}
 	return hh
 }
+
 func (r *Router) addUse(path string, hh ...func(*Context)) {
 	middlewares := []*handler{}
 	// add middlewares
