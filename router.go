@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/valyala/fasthttp" // faster than net/http
 )
@@ -25,7 +26,7 @@ type (
 	// Context of request
 	Context struct {
 		*fasthttp.RequestCtx
-		abort bool
+		abort int32
 	}
 
 	// Router struct
@@ -102,7 +103,7 @@ func buildHandler(handlerMap map[string]*handlerList, recoverFunction func(*Cont
 		status := notFoundFlag
 		c := pool.Get().(*Context)
 		c.RequestCtx = ctx
-		c.abort = false
+		atomic.StoreInt32(&c.abort, 0)
 		defer pool.Put(c)
 		defer recoverFunction(c)
 		if handlers, ok := handlerMap[path]; ok {
@@ -118,14 +119,14 @@ func buildHandler(handlerMap map[string]*handlerList, recoverFunction func(*Cont
 				if m == "" {
 					// middleware
 					h(c)
-					if c.abort {
+					if atomic.LoadInt32(&c.abort) == 1 {
 						return
 					}
 				} else if m == "*" || m == method {
 					// handler
 					status = 0
 					h(c)
-					if c.abort {
+					if atomic.LoadInt32(&c.abort) == 1 {
 						return
 					}
 				}
@@ -346,5 +347,5 @@ func (g *GroupRouter) Group(path string) (cg *GroupRouter) {
 
 // Abort next handler from context
 func (c *Context) Abort() {
-	c.abort = true
+	atomic.StoreInt32(&c.abort, 1)
 }
