@@ -26,7 +26,7 @@ type (
 	// Context of request
 	Context struct {
 		*fasthttp.RequestCtx
-		abort int32
+		IsAborted int32
 	}
 
 	// Router struct
@@ -103,7 +103,7 @@ func buildHandler(handlerMap map[string]*handlerList, recoverFunction func(*Cont
 		status := notFoundFlag
 		c := pool.Get().(*Context)
 		c.RequestCtx = ctx
-		atomic.StoreInt32(&c.abort, 0)
+		atomic.StoreInt32(&c.IsAborted, 0)
 		defer pool.Put(c)
 		defer recoverFunction(c)
 		if handlers, ok := handlerMap[path]; ok {
@@ -119,14 +119,14 @@ func buildHandler(handlerMap map[string]*handlerList, recoverFunction func(*Cont
 				if m == "" {
 					// middleware
 					h(c)
-					if atomic.LoadInt32(&c.abort) == 1 {
+					if atomic.LoadInt32(&c.IsAborted) == 1 {
 						return
 					}
 				} else if m == "*" || m == method {
 					// handler
 					status = 0
 					h(c)
-					if atomic.LoadInt32(&c.abort) == 1 {
+					if atomic.LoadInt32(&c.IsAborted) == 1 {
 						return
 					}
 				}
@@ -347,5 +347,5 @@ func (g *GroupRouter) Group(path string) (cg *GroupRouter) {
 
 // Abort next handler from context
 func (c *Context) Abort() {
-	atomic.StoreInt32(&c.abort, 1)
+	atomic.StoreInt32(&c.IsAborted, 1)
 }
