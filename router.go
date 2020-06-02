@@ -85,7 +85,7 @@ func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
 					if handle.h(ctx) {
 						return
 					}
-				} else if handle.m == "*" || handle.m == b2s(ctx.Method()) {
+				} else if handle.m[0] == '*' || handle.m == b2s(ctx.Method()) {
 					// handler
 					status = 0
 					handle.h(ctx)
