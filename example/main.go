@@ -19,7 +19,7 @@ func main() {
 
 	api.Use(func(ctx *fasthttp.RequestCtx) bool {
 		ctx.Response.Header.Set("Content-Type", "application/json")
-		return false
+		return false // return true to abort next handler
 	})
 
 	apiv1 := api.Group("/v1")
