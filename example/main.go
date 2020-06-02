@@ -32,15 +32,15 @@ func main() {
 
 	// apiv1.Get
 
-	apiv1.Any("/", func(ctx *fasthttp.RequestCtx) bool {
+	apiv1.Any("/", func(ctx *fasthttp.RequestCtx) (b bool) {
 		user, ok := ctx.UserValue("user").(map[string]string)
 		name, ok := user["Name"]
 		if !ok {
 			ctx.Error("Error", fasthttp.StatusInternalServerError)
-			return true
+			return
 		}
 		ctx.SetBodyString("\"Hello " + name + "\"")
-		return false
+		return
 	})
 
 	fs := &fasthttp.FS{
