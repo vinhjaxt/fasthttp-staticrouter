@@ -24,11 +24,11 @@ type (
 
 	// Router struct
 	Router struct {
-		handlers                 map[string]*handlerList // final map
-		middlewares              map[string][]*handler   // final map
-		notFoundFuction          func(*fasthttp.RequestCtx)
-		recoverFunction          func(*fasthttp.RequestCtx)
-		methodNotAllowedFunction func(*fasthttp.RequestCtx)
+		handlers                map[string]*handlerList // final map
+		middlewares             map[string][]*handler   // final map
+		notFoundHandler         func(*fasthttp.RequestCtx)
+		recoverFunction         func(*fasthttp.RequestCtx)
+		methodNotAllowedHandler func(*fasthttp.RequestCtx)
 	}
 
 	// GroupRouter struct
@@ -38,20 +38,22 @@ type (
 	}
 )
 
+var StrRecoverPanic = "Recovered from panic:"
+
 // Default handler functions
 func recoverFunction(c *fasthttp.RequestCtx) {
 	if r := recover(); r != nil {
-		log.Printf("Recovered from panic: %v %s\n", r, debug.Stack())
-		c.Error("Error", fasthttp.StatusInternalServerError)
+		log.Println(StrRecoverPanic, r, debug.Stack())
+		c.SetStatusCode(fasthttp.StatusInternalServerError)
 	}
 }
 
-func notFoundFuction(c *fasthttp.RequestCtx) {
-	c.Error("not found", fasthttp.StatusNotFound)
+func notFoundHandler(c *fasthttp.RequestCtx) {
+	c.SetStatusCode(fasthttp.StatusNotFound)
 }
 
-func methodNotAllowedFunction(c *fasthttp.RequestCtx) {
-	c.Error("request method not allowed", fasthttp.StatusMethodNotAllowed)
+func methodNotAllowedHandler(c *fasthttp.RequestCtx) {
+	c.SetStatusCode(fasthttp.StatusMethodNotAllowed)
 }
 
 const (
@@ -62,21 +64,26 @@ const (
 // New create a router
 func New() (r *Router) {
 	r = &Router{
-		handlers:                 map[string]*handlerList{},
-		middlewares:              map[string][]*handler{},
-		recoverFunction:          recoverFunction,
-		notFoundFuction:          notFoundFuction,
-		methodNotAllowedFunction: methodNotAllowedFunction,
+		handlers:                map[string]*handlerList{},
+		middlewares:             map[string][]*handler{},
+		recoverFunction:         recoverFunction,
+		notFoundHandler:         notFoundHandler,
+		methodNotAllowedHandler: methodNotAllowedHandler,
 	}
 	return
 }
 
 // BuildHandler to pass to fasthttp
 func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
+	r.middlewares = nil
+	recoverFunction := r.recoverFunction
+	methodNotAllowedHandler := r.methodNotAllowedHandler
+	notFoundHandler := r.notFoundHandler
+	handlers := r.handlers
 	return func(ctx *fasthttp.RequestCtx) {
 		status := notFoundFlag
-		defer r.recoverFunction(ctx)
-		if handlers, ok := r.handlers[b2s(ctx.Path())]; ok {
+		defer recoverFunction(ctx)
+		if handlers, ok := handlers[b2s(ctx.Path())]; ok {
 			status = methodNotAllowedFlag
 			// i think the number of handlers <= 10, so i use for loop array instead of map
 			for _, handle := range handlers.h {
@@ -96,30 +103,28 @@ func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
 		if status == 0 {
 			return
 		} else if status == methodNotAllowedFlag {
-			r.methodNotAllowedFunction(ctx)
-		} else if status == notFoundFlag {
-			r.notFoundFuction(ctx)
+			methodNotAllowedHandler(ctx)
+		} else {
+			notFoundHandler(ctx)
 		}
 	}
 }
 
 // Router
-func (r *Router) add(path, method string, hh ...func(*fasthttp.RequestCtx) (abort bool)) {
-	for _, h := range hh {
-		handle := &handler{
-			m: method,
-			h: h,
-		}
-		if handlers, ok := r.handlers[path]; ok {
-			// path exist, middlewares also added
-			handlers.h = append(handlers.h, handle)
-		} else {
-			// path not exist, add middlewares handlers
-			hm := r.findMiddlewares(path)
-			hm = append(hm, handle)
-			r.handlers[path] = &handlerList{
-				h: hm,
-			}
+func (r *Router) add(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	handle := &handler{
+		m: method,
+		h: h,
+	}
+	if handlers, ok := r.handlers[path]; ok {
+		// path exist, middlewares also added
+		handlers.h = append(handlers.h, handle)
+	} else {
+		// path not exist, add middlewares handlers
+		hm := r.findMiddlewares(path)
+		hm = append(hm, handle)
+		r.handlers[path] = &handlerList{
+			h: hm,
 		}
 	}
 }
@@ -146,20 +151,18 @@ func (r *Router) findMiddlewares(path string) []*handler {
 	return hh
 }
 
-func (r *Router) addUse(path string, hh ...func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) addUse(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
 	middlewares := []*handler{}
 	// add middlewares
-	for _, h := range hh {
-		handle := &handler{
-			m: "",
-			h: h,
-		}
-		middlewares = append(middlewares, handle)
-		if handles, ok := r.middlewares[path]; ok {
-			r.middlewares[path] = append(handles, handle)
-		} else {
-			r.middlewares[path] = []*handler{handle}
-		}
+	handle := &handler{
+		m: "",
+		h: h,
+	}
+	middlewares = append(middlewares, handle)
+	if handles, ok := r.middlewares[path]; ok {
+		r.middlewares[path] = append(handles, handle)
+	} else {
+		r.middlewares[path] = []*handler{handle}
 	}
 
 	// find router match this path
@@ -175,58 +178,63 @@ func (r *Router) addUse(path string, hh ...func(*fasthttp.RequestCtx) (abort boo
 }
 
 // Get method
-func (r *Router) Get(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "GET", h...)
+func (r *Router) Get(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "GET", h)
 }
 
 // Post method
-func (r *Router) Post(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "POST", h...)
+func (r *Router) Post(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "POST", h)
 }
 
 // Put method
-func (r *Router) Put(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "PUT", h...)
+func (r *Router) Put(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "PUT", h)
 }
 
 // Patch method
-func (r *Router) Patch(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "PATCH", h...)
+func (r *Router) Patch(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "PATCH", h)
 }
 
 // Delete method
-func (r *Router) Delete(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "DELETE", h...)
+func (r *Router) Delete(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "DELETE", h)
 }
 
 // Options method
-func (r *Router) Options(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "OPTIONS", h...)
+func (r *Router) Options(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "OPTIONS", h)
 }
 
 // Head method
-func (r *Router) Head(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "HEAD", h...)
+func (r *Router) Head(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "HEAD", h)
+}
+
+// Method specific
+func (r *Router) Method(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, method, h)
 }
 
 // Any method
-func (r *Router) Any(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.add(path, "*", h...)
+func (r *Router) Any(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.add(path, "*", h)
 }
 
 // Use middlewares
-func (r *Router) Use(h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	r.addUse("", h...)
+func (r *Router) Use(h func(*fasthttp.RequestCtx) (abort bool)) {
+	r.addUse("", h)
 }
 
 // NotFound handler
 func (r *Router) NotFound(h func(*fasthttp.RequestCtx)) {
-	r.notFoundFuction = h
+	r.notFoundHandler = h
 }
 
 // MethodNotAllowed handler
 func (r *Router) MethodNotAllowed(h func(*fasthttp.RequestCtx)) {
-	r.methodNotAllowedFunction = h
+	r.methodNotAllowedHandler = h
 }
 
 // Group make a group of routers
@@ -246,48 +254,53 @@ func (r *Router) OnError(h func(*fasthttp.RequestCtx)) {
 // GroupRouter
 
 // Get method
-func (g *GroupRouter) Get(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "GET", h...)
+func (g *GroupRouter) Get(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "GET", h)
 }
 
 // Post method
-func (g *GroupRouter) Post(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "POST", h...)
+func (g *GroupRouter) Post(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "POST", h)
 }
 
 // Put method
-func (g *GroupRouter) Put(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "PUT", h...)
+func (g *GroupRouter) Put(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "PUT", h)
 }
 
 // Patch method
-func (g *GroupRouter) Patch(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "PATCH", h...)
+func (g *GroupRouter) Patch(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "PATCH", h)
 }
 
 // Delete method
-func (g *GroupRouter) Delete(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "DELETE", h...)
+func (g *GroupRouter) Delete(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "DELETE", h)
 }
 
 // Options method
-func (g *GroupRouter) Options(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "OPTIONS", h...)
+func (g *GroupRouter) Options(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "OPTIONS", h)
 }
 
 // Head method
-func (g *GroupRouter) Head(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "HEAD", h...)
+func (g *GroupRouter) Head(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "HEAD", h)
+}
+
+// Method specific
+func (g *GroupRouter) Method(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, method, h)
 }
 
 // Any method
-func (g *GroupRouter) Any(path string, h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.add(g.path+path, "*", h...)
+func (g *GroupRouter) Any(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.add(g.path+path, "*", h)
 }
 
 // Use middlewares
-func (g *GroupRouter) Use(h ...func(*fasthttp.RequestCtx) (abort bool)) {
-	g.router.addUse(g.path, h...)
+func (g *GroupRouter) Use(h func(*fasthttp.RequestCtx) (abort bool)) {
+	g.router.addUse(g.path, h)
 }
 
 // Group create another group
