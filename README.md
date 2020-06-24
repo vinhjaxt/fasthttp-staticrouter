@@ -28,14 +28,14 @@ apiv1.Use(func(ctx *fasthttp.RequestCtx) bool {
 
 // apiv1.Get
 
-apiv1.Any("/", func(ctx *fasthttp.RequestCtx) (b bool) {
+apiv1.Any("/", func(ctx *fasthttp.RequestCtx) (_ bool) {
   user, ok := ctx.UserValue("user").(map[string]string)
   name, ok := user["Name"]
   if !ok {
     ctx.Error("Error", fasthttp.StatusInternalServerError)
     return
   }
-  ctx.SetBodyString("\"Hello " + name + "\"")
+  ctx.SetBodyString(`"Hello ` + name + `"`)
   return
 })
 ```
@@ -44,7 +44,7 @@ Checkout [Example](example/main.go)
 # Available api:
   - r.New : Create new router
   - r.Use : Middleware
-  - r.Get, r.Post, r.Put, r.Patch, r.Delete, r.Options, r.Head : HTTP methods
+  - r.Get, r.Post, r.Put, r.Patch, r.Delete, r.Options, r.Head, r.Method, r.Any : HTTP methods
   - r.Group : Create group of routers
   - r.NotFound : Set not found function
   - r.MethodNotAllowed : Set MethodNotAllowed function

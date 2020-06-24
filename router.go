@@ -111,7 +111,7 @@ func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
 }
 
 // Router
-func (r *Router) add(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) add(path, method string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	handle := &handler{
 		m: method,
 		h: h,
@@ -178,47 +178,47 @@ func (r *Router) addUse(path string, h func(*fasthttp.RequestCtx) (abort bool)) 
 }
 
 // Get method
-func (r *Router) Get(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Get(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "GET", h)
 }
 
 // Post method
-func (r *Router) Post(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Post(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "POST", h)
 }
 
 // Put method
-func (r *Router) Put(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Put(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "PUT", h)
 }
 
 // Patch method
-func (r *Router) Patch(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Patch(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "PATCH", h)
 }
 
 // Delete method
-func (r *Router) Delete(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Delete(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "DELETE", h)
 }
 
 // Options method
-func (r *Router) Options(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Options(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "OPTIONS", h)
 }
 
 // Head method
-func (r *Router) Head(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Head(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "HEAD", h)
 }
 
 // Method specific
-func (r *Router) Method(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Method(path, method string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, method, h)
 }
 
 // Any method
-func (r *Router) Any(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (r *Router) Any(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	r.add(path, "*", h)
 }
 
@@ -254,47 +254,47 @@ func (r *Router) OnError(h func(*fasthttp.RequestCtx)) {
 // GroupRouter
 
 // Get method
-func (g *GroupRouter) Get(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Get(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "GET", h)
 }
 
 // Post method
-func (g *GroupRouter) Post(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Post(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "POST", h)
 }
 
 // Put method
-func (g *GroupRouter) Put(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Put(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "PUT", h)
 }
 
 // Patch method
-func (g *GroupRouter) Patch(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Patch(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "PATCH", h)
 }
 
 // Delete method
-func (g *GroupRouter) Delete(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Delete(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "DELETE", h)
 }
 
 // Options method
-func (g *GroupRouter) Options(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Options(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "OPTIONS", h)
 }
 
 // Head method
-func (g *GroupRouter) Head(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Head(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "HEAD", h)
 }
 
 // Method specific
-func (g *GroupRouter) Method(path, method string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Method(path, method string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, method, h)
 }
 
 // Any method
-func (g *GroupRouter) Any(path string, h func(*fasthttp.RequestCtx) (abort bool)) {
+func (g *GroupRouter) Any(path string, h func(*fasthttp.RequestCtx) (_ bool)) {
 	g.router.add(g.path+path, "*", h)
 }
 
