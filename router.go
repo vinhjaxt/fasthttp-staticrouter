@@ -14,8 +14,9 @@ import (
 
 type (
 	handler struct {
-		m string
-		h func(*fasthttp.RequestCtx) (abort bool)
+		im, ia bool                                    // is Middlware, is Any
+		h      func(*fasthttp.RequestCtx) (abort bool) // handle
+		m      string                                  // method
 	}
 
 	handlerList struct {
@@ -24,11 +25,11 @@ type (
 
 	// Router struct
 	Router struct {
-		handlers                map[string]*handlerList // final map
-		middlewares             map[string][]*handler   // final map
-		notFoundHandler         func(*fasthttp.RequestCtx)
-		recoverFunction         func(*fasthttp.RequestCtx)
-		methodNotAllowedHandler func(*fasthttp.RequestCtx)
+		handlers                map[string]*handlerList
+		RecoverHanlder          func(*fasthttp.RequestCtx)
+		NotFoundHandler         func(*fasthttp.RequestCtx)
+		MethodNotAllowedHandler func(*fasthttp.RequestCtx)
+		middlewares             map[string][]*handler
 	}
 
 	// GroupRouter struct
@@ -38,83 +39,86 @@ type (
 	}
 )
 
+// StrRecoverPanic string
 var StrRecoverPanic = "Recovered from panic:"
 
-// Default handler functions
-func recoverFunction(c *fasthttp.RequestCtx) {
+// RecoverHanlder is default RecoverHanlder
+func RecoverHanlder(c *fasthttp.RequestCtx) {
 	if r := recover(); r != nil {
 		log.Println(StrRecoverPanic, r, debug.Stack())
 		c.SetStatusCode(fasthttp.StatusInternalServerError)
 	}
 }
 
-func notFoundHandler(c *fasthttp.RequestCtx) {
+// NotFoundHandler is default NotFoundHandler
+func NotFoundHandler(c *fasthttp.RequestCtx) {
 	c.SetStatusCode(fasthttp.StatusNotFound)
 }
 
-func methodNotAllowedHandler(c *fasthttp.RequestCtx) {
+// MethodNotAllowedHandler is default MethodNotAllowedHandler
+func MethodNotAllowedHandler(c *fasthttp.RequestCtx) {
 	c.SetStatusCode(fasthttp.StatusMethodNotAllowed)
 }
-
-const (
-	notFoundFlag         = 0x01
-	methodNotAllowedFlag = 0x02
-)
 
 // New create a router
 func New() (r *Router) {
 	r = &Router{
 		handlers:                map[string]*handlerList{},
+		RecoverHanlder:          RecoverHanlder,
+		NotFoundHandler:         NotFoundHandler,
+		MethodNotAllowedHandler: MethodNotAllowedHandler,
 		middlewares:             map[string][]*handler{},
-		recoverFunction:         recoverFunction,
-		notFoundHandler:         notFoundHandler,
-		methodNotAllowedHandler: methodNotAllowedHandler,
 	}
 	return
 }
 
-// BuildHandler to pass to fasthttp
-func (r *Router) BuildHandler() (h func(ctx *fasthttp.RequestCtx)) {
-	r.middlewares = nil
-	recoverFunction := r.recoverFunction
-	methodNotAllowedHandler := r.methodNotAllowedHandler
-	notFoundHandler := r.notFoundHandler
-	handlers := r.handlers
-	return func(ctx *fasthttp.RequestCtx) {
-		status := notFoundFlag
-		defer recoverFunction(ctx)
-		if handlers, ok := handlers[b2s(ctx.Path())]; ok {
-			status = methodNotAllowedFlag
-			// i think the number of handlers <= 10, so i use for loop array instead of map
-			for _, handle := range handlers.h {
-				if len(handle.m) == 0 {
-					// middleware
-					if handle.h(ctx) {
-						return
-					}
-				} else if handle.m[0] == '*' || handle.m == b2s(ctx.Method()) {
-					// handler
-					status = 0
-					handle.h(ctx)
-					return
-				}
+// Handler ate request :v
+func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
+	defer r.RecoverHanlder(ctx)
+	handlers, ok := r.handlers[b2s(ctx.Path())]
+	if !ok {
+		r.NotFoundHandler(ctx)
+		return
+	}
+	// I think the numbers of handlers <= 10, so I use loop instead of map
+	var handle *handler
+	method := b2s(ctx.Method())
+	for _, handle = range handlers.h {
+		// Is middleware?
+		if handle.im {
+			if handle.h(ctx) {
+				return
 			}
+			continue
 		}
-		if status == 0 {
+		// Is "any" method or exactly method?
+		if handle.ia || handle.m == method {
+			handle.h(ctx)
 			return
-		} else if status == methodNotAllowedFlag {
-			methodNotAllowedHandler(ctx)
-		} else {
-			notFoundHandler(ctx)
 		}
 	}
+	r.MethodNotAllowedHandler(ctx)
+}
+
+// BuildHandler return the request handler
+func (r *Router) BuildHandler() func(ctx *fasthttp.RequestCtx) {
+	r.middlewares = nil
+	return r.Handler
 }
 
 // Router
 func (r *Router) add(path, method string, h func(*fasthttp.RequestCtx) (_ bool)) {
-	handle := &handler{
-		m: method,
-		h: h,
+	var handle *handler
+	if method == "*" {
+		handle = &handler{
+			ia: true,
+			h:  h,
+		}
+	} else {
+		handle = &handler{
+			m: method,
+			h: h,
+		}
 	}
 	if handlers, ok := r.handlers[path]; ok {
 		// path exist, middlewares also added
@@ -155,8 +159,8 @@ func (r *Router) addUse(path string, h func(*fasthttp.RequestCtx) (abort bool)) 
 	middlewares := []*handler{}
 	// add middlewares
 	handle := &handler{
-		m: "",
-		h: h,
+		im: true,
+		h:  h,
 	}
 	middlewares = append(middlewares, handle)
 	if handles, ok := r.middlewares[path]; ok {
@@ -170,8 +174,8 @@ func (r *Router) addUse(path string, h func(*fasthttp.RequestCtx) (abort bool)) 
 	for k, h := range r.handlers {
 		lk := len(k)
 		if k == path || (lk >= lpath && k[0:lpath] == path && k[lpath] == '/') {
-			// append middlewares
-			h.h = append(h.h, middlewares...)
+			// prepend middlewares
+			h.h = append(middlewares, h.h...)
 			r.handlers[k] = h
 		}
 	}
@@ -229,12 +233,12 @@ func (r *Router) Use(h func(*fasthttp.RequestCtx) (abort bool)) {
 
 // NotFound handler
 func (r *Router) NotFound(h func(*fasthttp.RequestCtx)) {
-	r.notFoundHandler = h
+	r.NotFoundHandler = h
 }
 
 // MethodNotAllowed handler
 func (r *Router) MethodNotAllowed(h func(*fasthttp.RequestCtx)) {
-	r.methodNotAllowedHandler = h
+	r.MethodNotAllowedHandler = h
 }
 
 // Group make a group of routers
@@ -246,9 +250,14 @@ func (r *Router) Group(path string) (g *GroupRouter) {
 	return
 }
 
-// OnError Recover from panic
+// OnError set RecoverHanlder
 func (r *Router) OnError(h func(*fasthttp.RequestCtx)) {
-	r.recoverFunction = h
+	r.Recover(h)
+}
+
+// Recover set RecoverHanlder
+func (r *Router) Recover(h func(*fasthttp.RequestCtx)) {
+	r.RecoverHanlder = h
 }
 
 // GroupRouter
