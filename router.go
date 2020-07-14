@@ -250,7 +250,7 @@ func (r *Router) Group(path string) (g *GroupRouter) {
 	return
 }
 
-// OnError set RecoverHanlder
+// OnError is an alias of r.Recover()
 func (r *Router) OnError(h func(*fasthttp.RequestCtx)) {
 	r.Recover(h)
 }
