@@ -3,63 +3,45 @@ package main
 import (
 	"flag"
 	"log"
-	"strconv"
+	"os"
+	"time"
 
 	"github.com/valyala/fasthttp"
-	router "github.com/vinhjaxt/fasthttp-staticrouter"
 )
 
 func main() {
-	port := flag.Int("port", 8080, "HTTP port")
+	bindTCP := flag.String("bind-tcp", ":80", "Bind TCP address")
+	bindSockFile := flag.String("bind-file", "", "Bind Unix socket file")
+	staticDir := flag.String("static-dir", "", "Static file server directory")
 	flag.Parse()
 
-	r := router.New()
-
-	api := r.Group("/api")
-
-	api.Use(func(ctx *fasthttp.RequestCtx) bool {
-		ctx.Response.Header.Set("Content-Type", "application/json")
-		return false // return true to abort next handler
-	})
-
-	apiv1 := api.Group("/v1")
-
-	apiv1.Use(func(ctx *fasthttp.RequestCtx) bool {
-		ctx.Response.Header.Set("X-Hello", "Hello") // dont trust the client
-		ctx.SetUserValue("user", map[string]string{"Name": "Guest"})
-		return false
-	})
-
-	// apiv1.Get
-
-	apiv1.Any("/", func(ctx *fasthttp.RequestCtx) (b bool) {
-		user, ok := ctx.UserValue("user").(map[string]string)
-		name, ok := user["Name"]
-		if !ok {
-			ctx.Error("Error", fasthttp.StatusInternalServerError)
-			return
-		}
-		ctx.SetBodyString("\"Hello " + name + "\"")
-		return
-	})
-
-	fs := &fasthttp.FS{
-		Root:               "./public_web",
-		IndexNames:         []string{"index.html"},
-		AcceptByteRange:    true,
-		GenerateIndexPages: false,
-		Compress:           true,
-		// CacheDuration: ,
-	}
-	r.NotFound(fs.NewRequestHandler())
-
-	api = nil
-	apiv1 = nil
-
-	// Start HTTP server.
 	s := &fasthttp.Server{
-		Handler: r.BuildHandler(),
+		// ErrorHandler: nil,
+		Handler:               buildHTTPHandler(*staticDir),
+		NoDefaultServerHeader: true, // Don't send Server: fasthttp
+		// Name: "nginx",  // Send Server header
+		ReadBufferSize:                2 * 4096, // Make sure these are big enough.
+		WriteBufferSize:               4096,
+		ReadTimeout:                   5 * time.Second,
+		WriteTimeout:                  time.Second,
+		IdleTimeout:                   time.Minute, // This can be long for keep-alive connections.
+		DisableHeaderNamesNormalizing: false,       // If you're not going to look at headers or know the casing you can set this.
+		// NoDefaultContentType: true, // Don't send Content-Type: text/plain if no Content-Type is set manually.
+		MaxRequestBodySize: 2 * 1024 * 1024, // 2MB
+		DisableKeepalive:   false,
+		KeepHijackedConns:  true,
+		// NoDefaultDate: len(*staticDir) == 0,
+		ReduceMemoryUsage: true,
+		TCPKeepalive:      true,
+		// TCPKeepalivePeriod: 10 * time.Second,
+		// MaxRequestsPerConn: 1000,
+		// MaxConnsPerIP: 20,
 	}
-	log.Println("Server running on", *port)
-	log.Panicln(s.ListenAndServe(":" + strconv.Itoa(*port)))
+	if len(*bindSockFile) == 0 {
+		log.Println("Listening on", *bindTCP)
+		log.Panicln(s.ListenAndServe(*bindTCP))
+	} else {
+		log.Println("Listening on", *bindSockFile)
+		log.Panicln(s.ListenAndServeUNIX(*bindSockFile, os.ModePerm))
+	}
 }

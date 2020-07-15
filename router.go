@@ -19,13 +19,9 @@ type (
 		m      string                                  // method
 	}
 
-	handlerList struct {
-		h []*handler
-	}
-
 	// Router struct
 	Router struct {
-		handlers                map[string]*handlerList
+		handlers                map[string][]*handler
 		RecoverHanlder          func(*fasthttp.RequestCtx)
 		NotFoundHandler         func(*fasthttp.RequestCtx)
 		MethodNotAllowedHandler func(*fasthttp.RequestCtx)
@@ -63,7 +59,7 @@ func MethodNotAllowedHandler(c *fasthttp.RequestCtx) {
 // New create a router
 func New() (r *Router) {
 	r = &Router{
-		handlers:                map[string]*handlerList{},
+		handlers:                map[string][]*handler{},
 		RecoverHanlder:          RecoverHanlder,
 		NotFoundHandler:         NotFoundHandler,
 		MethodNotAllowedHandler: MethodNotAllowedHandler,
@@ -83,7 +79,7 @@ func (r *Router) Handler(ctx *fasthttp.RequestCtx) {
 	// I think the numbers of handlers <= 10, so I use loop instead of map
 	var handle *handler
 	method := b2s(ctx.Method())
-	for _, handle = range handlers.h {
+	for _, handle = range handlers {
 		// Is middleware?
 		if handle.im {
 			if handle.h(ctx) {
@@ -120,17 +116,16 @@ func (r *Router) add(path, method string, h func(*fasthttp.RequestCtx) (_ bool))
 			h: h,
 		}
 	}
-	if handlers, ok := r.handlers[path]; ok {
+	handlers, ok := r.handlers[path]
+	if ok {
 		// path exist, middlewares also added
-		handlers.h = append(handlers.h, handle)
+		handlers = append(handlers, handle)
 	} else {
 		// path not exist, add middlewares handlers
-		hm := r.findMiddlewares(path)
-		hm = append(hm, handle)
-		r.handlers[path] = &handlerList{
-			h: hm,
-		}
+		handlers = r.findMiddlewares(path)
+		handlers = append(handlers, handle)
 	}
+	r.handlers[path] = handlers
 }
 
 func (r *Router) findMiddlewares(path string) []*handler {
@@ -175,8 +170,7 @@ func (r *Router) addUse(path string, h func(*fasthttp.RequestCtx) (abort bool)) 
 		lk := len(k)
 		if k == path || (lk >= lpath && k[0:lpath] == path && k[lpath] == '/') {
 			// prepend middlewares
-			h.h = append(middlewares, h.h...)
-			r.handlers[k] = h
+			r.handlers[k] = append(middlewares, h...)
 		}
 	}
 }
