@@ -53,17 +53,17 @@ Checkout [Example](example/main.go)
 ### Serve
 `./example -bind-tcp :8080 -static-dir ./public_web/`
 ### Test
-`wrk -t20 -c1000 -d30s -R1000000 http://127.0.0.1:8080/api/v1.0/`
+`wrk -t20 -c1000 -d30s http://127.0.0.1:8080/api/v1.0/`
 ### /index.html
 ```
 Running 30s test @ http://127.0.0.1:8080/
   20 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    18.65s     5.45s   28.62s    57.66%
-    Req/Sec     2.68k   216.40     3.21k    70.00%
-  1614174 requests in 29.99s, 300.18MB read
-Requests/sec:  53814.91
-Transfer/sec:     10.01MB
+    Latency    18.09ms   10.35ms 123.02ms   77.51%
+    Req/Sec     2.84k     0.95k   19.18k    82.24%
+  1686971 requests in 30.09s, 313.72MB read
+Requests/sec:  56071.61
+Transfer/sec:     10.43MB
 ```
 
 ### /api/v1.0/
@@ -71,11 +71,11 @@ Transfer/sec:     10.01MB
 Running 30s test @ http://127.0.0.1:8080/api/v1.0/
   20 threads and 1000 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency    18.56s     5.35s   28.44s    57.98%
-    Req/Sec     3.01k   178.65     3.49k    70.00%
-  1805231 requests in 30.00s, 266.85MB read
-Requests/sec:  60183.75
-Transfer/sec:      8.90MB
+    Latency    16.47ms    9.74ms 122.89ms   77.09%
+    Req/Sec     3.13k     1.10k   19.13k    81.63%
+  1857419 requests in 30.09s, 274.56MB read
+Requests/sec:  61721.53
+Transfer/sec:      9.12MB
 ```
 ### Test Machine
 ```
@@ -87,7 +87,7 @@ GPU: Intel 2nd Generation Core Proces
 Memory: 4407MiB / 9856MiB 
 ```
 ### Mem usage
-31.9 MB
+29.5 MB
 
 ## License
 - MIT
